@@ -1,49 +1,79 @@
 <?php
+// ここにDBに登録する処理を記述する
+$dsn = 'mysql:dbname=oneline_bbs;host=localhost';
+$user = 'root';
+$password = '';
+$dbh = new PDO($dsn,$user,$password);
+$dbh->query('SET NAMES utf8');
 
-  // データベースに接続
-  $dns = 'mysql:dbname=oneline_bbs;host=localhost';
-  $user = 'root';
-  $password = '';
-  $dbh = new PDO($dns,$user,$password);
-  $dbh->query('SET NAMES utf8');
-
-  // POST送信されたらINSERT文を実行
-  if (isset($_POST) && !empty($_POST)){
-
-    //SQL文作成（INSERT文）
-    $sql = 'INSERT INTO `posts` ( `nickname`, `comment`, `created`) VALUES ( ?, ?, now())';
-
-    $param[] = $_POST['nickname'];
-    $param[] = $_POST['comment'];
-
-    // INSERT文実行
-    $stmt = $dbh->prepare($sql);
-    $stmt->execute($param);
+// POST送信された時のみ登録処理を実行
+if (isset($_POST) && !empty($_POST)) {
+  if (isset($_GET["id"]) == true){
+    //データを更新する
+    $sql = 'UPDATE `posts` SET `nickname` = ?,`comment` = ? WHERE `id` = ?';
+  
+    $data[] = $_POST['nickname'];
+    $data[] = $_POST['comment'];
+    $data[] = $_GET['id'];
+    //var_dump($sql);
+  }else{
+    // データを登録する
+    $sql = 'INSERT INTO `posts`(`nickname`, `comment`, `created`) VALUES (?, ?, now())';
+    $data[] = $_POST['nickname'];
+    $data[] = $_POST['comment'];
   }
 
-  //SQL文作成（SELECT文）
-  $sql = 'SELECT * FROM `posts` ORDER BY `created` DESC';
 
-  // SELECT文実行
+  
+
+  // SQL実行
+  $stmt = $dbh->prepare($sql);
+  $stmt->execute($data);
+}
+
+$nickname = "";
+$comment = "";
+$id = 0;
+
+
+//歯車が押されたか確認
+if (isset($_GET['action']) && ($_GET['action'] == 'edit')){
+  //編集したいデータを取得
+  $sql = 'SELECT * FROM `posts` WHERE `id`='.$_GET['id'];
+
+  // SQL実行
   $stmt = $dbh->prepare($sql);
   $stmt->execute();
+  //一行分フェッチ
+  $rec = $stmt->fetch(PDO::FETCH_ASSOC);
 
-  //格納する変数の初期化
-  $posts = array();
+  $nickname = $rec['nickname'];
+  $comment = $rec['comment'];
+  $id = $rec['id'];
+}
 
-  // 繰り返し分でデータの取得
-  while(1){
-    $rec = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($rec == false){
-      //データを最後まで取得した印なので終了
-      break;
-    }
-    // 取得したデータを配列に格納しておく
-    $posts[] = $rec;
+// データの表示
+$sql = 'SELECT * FROM `posts` ORDER BY `created` DESC';
+// SQL実行
+$stmt = $dbh->prepare($sql);
+$stmt->execute();
+
+// データ格納用変数
+$data = array();
+
+// データを取得
+while (1) {
+  $rec = $stmt->fetch(PDO::FETCH_ASSOC);
+  if ($rec == false) {
+    break;
   }
+  // 1レコードずつデータを格納
+  $data[] = $rec;
+}
 
-  // データベースから切断
-  $dbh = null;
+// データベースを切断
+$dbh = null;
+
 ?>
 <!DOCTYPE html>
 <html lang="ja">
@@ -90,50 +120,63 @@
       <!-- 画面左側 -->
       <div class="col-md-4 content-margin-top">
         <!-- form部分 -->
-        <form action="bbs.php" method="post">
+        <?php if (empty($nickname) && empty($comment)){ ?>
+          <form action="bbs.php" method="post">
+        <?php }else{ ?>
+          <form action="bbs.php?id=<?php echo $id;?>" method="post">
+        <?php } ?>
+
+
           <!-- nickname -->
           <div class="form-group">
             <div class="input-group">
-              <input type="text" name="nickname" class="form-control" id="validate-text" placeholder="nickname" required>
+              <input type="text" name="nickname" class="form-control" id="validate-text" placeholder="nickname" value="<?php echo $nickname; ?>" required>
               <span class="input-group-addon danger"><span class="glyphicon glyphicon-remove"></span></span>
             </div>
           </div>
           <!-- comment -->
           <div class="form-group">
             <div class="input-group" data-validate="length" data-length="4">
-              <textarea type="text" class="form-control" name="comment" id="validate-length" placeholder="comment" required></textarea>
+              <textarea type="text" class="form-control" name="comment" id="validate-length" placeholder="comment" required><?php echo $comment; ?></textarea>
               <span class="input-group-addon danger"><span class="glyphicon glyphicon-remove"></span></span>
             </div>
           </div>
           <!-- つぶやくボタン -->
-          <button type="submit" class="btn btn-primary col-xs-12" disabled>つぶやく</button>
+          <button type="submit" class="btn btn-primary col-xs-12" disabled>
+            <?php if (empty($nickname) && empty($comment)){ ?>
+              つぶやく
+            <?php }else{ ?>
+              編集する
+            <?php  } ?>
+          </button>
         </form>
       </div>
 
       <!-- 画面右側 -->
       <div class="col-md-8 content-margin-top">
         <div class="timeline-centered">
-          <?php foreach ($posts as $post_each) { ?>
+        <?php foreach($data as $d): ?>
           <article class="timeline-entry">
               <div class="timeline-entry-inner">
-                  <div class="timeline-icon bg-success">
-                      <i class="entypo-feather"></i>
-                      <i class="fa fa-cogs"></i>
-                  </div>
+                  <a href="bbs.php?action=edit&id=<?php echo $d["id"]; ?>">
+                    <div class="timeline-icon bg-success">
+                        <i class="entypo-feather"></i>
+                        <i class="fa fa-cogs"></i>
+                    </div>
+                  </a>
                   <div class="timeline-label">
-                      <h2><a href="#"><?php echo $post_each['nickname'];?></a> <span>
-                      <?php 
-                        //日付型に変換
-                        $created = strtotime($post_each['created']);
-                        $str_created = date('Y/m/d',$created);
-                        echo $str_created;?>
-                        
-                      </span></h2>
-                      <p><?php echo $post_each['comment'];?></p>
+                    <?php
+                      // いったん日時型に変換する（String型からDatetime型へ変換）
+                      $created = strtotime($d['created']);
+                      // 書式の変換
+                      $created = date('Y/m/d', $created);
+                    ?>
+                      <h2><a href="#"><?php echo $d['nickname']; ?></a> <span><?php echo $created; ?></span></h2>
+                      <p><?php echo $d['comment']; ?></p>
                   </div>
               </div>
           </article>
-          <?php } ?>
+        <?php endforeach; ?>
 
           <article class="timeline-entry begin">
               <div class="timeline-entry-inner">
@@ -155,6 +198,3 @@
   <script src="assets/js/form.js"></script>
 </body>
 </html>
-
-
-
